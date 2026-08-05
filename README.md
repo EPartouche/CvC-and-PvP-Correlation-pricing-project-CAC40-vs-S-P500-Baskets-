@@ -96,8 +96,6 @@ Before analyzing correlation or pricing any option, we first look at how each CA
 
 *Figure 1 — Cumulative performance (base 100) of the three CAC40 sector baskets over the 5-year window.*
 
-<img width="1917" height="1016" alt="02_sp500_baskets" src="https://github.com/user-attachments/assets/053f72e6-0a26-430e-991c-2dfd9c30a90d" />
-
 
 **S&P 500**
 **Markets forcasts**
@@ -141,6 +139,8 @@ Before analyzing correlation or pricing any option, we first look at how each CA
 
 <img width="953" height="269" alt="image" src="https://github.com/user-attachments/assets/fd1d145a-1c11-48ab-a9c1-37f87fd2b8d9" />
 
+
+<img width="1917" height="1016" alt="02_sp500_baskets" src="https://github.com/user-attachments/assets/053f72e6-0a26-430e-991c-2dfd9c30a90d" />
 
 *Figure 2 — Cumulative performance (base 100) of the three S&P500 sector baskets over the same window.*
 
