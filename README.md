@@ -64,19 +64,24 @@ The gap is immediately informative: **S&P Tech is the most volatile basket of th
 <img width="958" height="287" alt="image" src="https://github.com/user-attachments/assets/e9467f04-225d-43e9-855d-0443490e9ba6" />
 
 ***Engie***
+
 <img width="948" height="271" alt="image" src="https://github.com/user-attachments/assets/d0fdb4a1-c7d9-4ecd-953d-3144bc43af67" />
 
 ***Luxury***
 ***LVMH***
+
 <img width="952" height="273" alt="image" src="https://github.com/user-attachments/assets/427fe35b-5f91-4701-895f-f982b41caa2b" />
 
 ***Hermes***
+
 <img width="949" height="268" alt="image" src="https://github.com/user-attachments/assets/f6ff4777-9e78-44ae-9b63-f13869e32f66" />
 
 ***Kering***
+
 <img width="947" height="261" alt="image" src="https://github.com/user-attachments/assets/e2940670-16f4-40f8-9919-55287a262aba" />
 
 ***L'Oréal***
+
 <img width="950" height="265" alt="image" src="https://github.com/user-attachments/assets/bd953206-b28c-4a94-944c-ea869c5593fc" />
 
 
