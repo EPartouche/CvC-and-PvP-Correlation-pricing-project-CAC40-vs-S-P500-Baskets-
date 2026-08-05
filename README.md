@@ -88,7 +88,9 @@ The gap is immediately informative: **S&P Tech is the most volatile basket of th
 
 <img width="950" height="265" alt="image" src="https://github.com/user-attachments/assets/bd953206-b28c-4a94-944c-ea869c5593fc" />
 
+
 Before analyzing correlation or pricing any option, we first look at how each CAC40 sector basket actually performed on a standalone basis over the past 5 years. This chart sets the baseline: it shows CAC Tech's clear outperformance against the tighter, shared trajectory of CAC Energy and CAC Luxury, which we'll revisit once we get into correlation.
+
 
 <img width="1917" height="1016" alt="01_cac40_baskets" src="https://github.com/user-attachments/assets/2e7fd2a2-c722-4c6e-98e9-ef093f6bd03a" />
 
