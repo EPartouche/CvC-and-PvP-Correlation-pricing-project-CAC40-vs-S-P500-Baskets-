@@ -45,9 +45,9 @@ Market data (5 years of daily prices) is sourced from Yahoo Finance where availa
 
 The gap is immediately informative: **S&P Tech is the most volatile basket of the six by a clear margin (~35%)**, almost entirely driven by Nvidia's idiosyncratic volatility — a reminder that even a "sector-matched" pair can carry very different risk profiles on each side of the Atlantic before any correlation effect is even considered.
 
-**Markets forcasts**
-
 **CAC 40 STOCKS**
+
+**Markets forcasts**
 
 ***Tech***
 ***Capgemini***
@@ -88,13 +88,57 @@ The gap is immediately informative: **S&P Tech is the most volatile basket of th
 
 <img width="950" height="265" alt="image" src="https://github.com/user-attachments/assets/bd953206-b28c-4a94-944c-ea869c5593fc" />
 
-
+Before analyzing correlation or pricing any option, we first look at how each CAC40 sector basket actually performed on a standalone basis over the past 5 years. This chart sets the baseline: it shows CAC Tech's clear outperformance against the tighter, shared trajectory of CAC Energy and CAC Luxury, which we'll revisit once we get into correlation.
 
 <img width="1917" height="1016" alt="01_cac40_baskets" src="https://github.com/user-attachments/assets/2e7fd2a2-c722-4c6e-98e9-ef093f6bd03a" />
 
 *Figure 1 — Cumulative performance (base 100) of the three CAC40 sector baskets over the 5-year window.*
 
 <img width="1917" height="1016" alt="02_sp500_baskets" src="https://github.com/user-attachments/assets/053f72e6-0a26-430e-991c-2dfd9c30a90d" />
+
+
+**S&P 500**
+**Markets forcasts**
+
+***Tech***
+***Nvidia***
+
+<img width="953" height="275" alt="image" src="https://github.com/user-attachments/assets/559d5ff7-f7c8-45af-bee8-98272e61e7e2" />
+
+***Microsoft***
+
+<img width="961" height="275" alt="image" src="https://github.com/user-attachments/assets/6718b7e8-aca7-4fa5-a157-55cbc9dd88cb" />
+
+***Alphabet***
+
+<img width="941" height="271" alt="image" src="https://github.com/user-attachments/assets/8d1e65a6-743c-4c07-bdfa-a5ef117bc36c" />
+
+***Energy***
+***ExxonMobil***
+
+<img width="957" height="271" alt="image" src="https://github.com/user-attachments/assets/2f5d4f8a-f6d4-421f-b9d1-25b10ac19696" />
+
+***Chevron***
+
+<img width="958" height="275" alt="image" src="https://github.com/user-attachments/assets/8439a170-7ac2-4d86-b589-738499535f71" />
+
+***Medias***
+***Walt Disney Corp.***
+
+<img width="946" height="273" alt="image" src="https://github.com/user-attachments/assets/709be6e4-f839-47ad-88b6-f4754ba0df43" />
+
+***Comcast***
+
+<img width="954" height="269" alt="image" src="https://github.com/user-attachments/assets/89df5c8e-43bb-4d28-a6e1-5d7260daf247" />
+
+***Netflix***
+
+<img width="953" height="269" alt="image" src="https://github.com/user-attachments/assets/d52ad3ae-ef8f-42c4-b21e-ac62df9ab5d6" />
+
+***Warner Bros Discovery Inc.***
+
+<img width="953" height="269" alt="image" src="https://github.com/user-attachments/assets/fd1d145a-1c11-48ab-a9c1-37f87fd2b8d9" />
+
 
 *Figure 2 — Cumulative performance (base 100) of the three S&P500 sector baskets over the same window.*
 
