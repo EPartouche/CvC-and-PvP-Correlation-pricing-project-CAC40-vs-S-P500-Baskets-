@@ -49,10 +49,12 @@ The gap is immediately informative: **S&P Tech is the most volatile basket of th
 
 *Figure 1 — Cumulative performance (base 100) of the three CAC40 sector baskets over the 5-year window.*
 
-![S&P500 sector baskets — cumulative performance](output/figures/02_sp500_baskets.png)
+<img width="1917" height="1016" alt="02_sp500_baskets" src="https://github.com/user-attachments/assets/053f72e6-0a26-430e-991c-2dfd9c30a90d" />
+
 *Figure 2 — Cumulative performance (base 100) of the three S&P500 sector baskets over the same window.*
 
-![Sector reference indices](output/figures/03_sector_benchmarks.png)
+<img width="1917" height="1016" alt="03_sector_benchmarks" src="https://github.com/user-attachments/assets/2c4eab25-a1f8-4d38-a442-f12cef81e7d4" />
+
 *Figure 3 — The four MSCI World proxy sector indices (IT, Energy, Luxury/Consumer Discretionary, Communication Services) used later as reference benchmarks in Task 6.*
 
 ---
@@ -77,10 +79,12 @@ Three things stand out:
 2. **Every basket correlates more strongly with its own MSCI sector benchmark than with its transatlantic sector counterpart.** This confirms the existence of a real global sector factor (tech is tech, energy is energy, wherever you are), but the gap between "basket-to-benchmark" correlation (0.51–0.73) and "basket-to-basket" correlation (0.39–0.51) is exactly the geography-specific spread that a CvC/PvP trade is designed to monetize.
 3. **The four MSCI benchmarks are almost interchangeable with each other (0.83–0.86 correlation)** — a useful sanity check confirming that, at the broad index level, sector distinctions matter far less than the common global equity factor.
 
-![Global correlation heatmap](output/figures/04_global_correlation_heatmap.png)
+<img width="1898" height="1572" alt="04_global_correlation_heatmap" src="https://github.com/user-attachments/assets/0471030e-a6b3-431e-9170-c2c957011614" />
+
 *Figure 4 — Full 10×10 correlation matrix across all 6 baskets and 4 sector benchmarks. This is the single most information-dense chart of the project: read row by row, it shows exactly how much diversification (or lack thereof) exists between every pair of instruments used downstream.*
 
-![Rolling correlation of trading pairs](output/figures/05_rolling_correlation_trades.png)
+<img width="2097" height="1016" alt="05_rolling_correlation_trades" src="https://github.com/user-attachments/assets/deef125a-964b-4c67-881f-28c7c53fb40a" />
+
 *Figure 5 — 60-day rolling correlation for each of the 3 trading pairs. Unlike the static matrix above, this shows the correlation *regime* is not stable through time — a CvC/PvP position is therefore exposed not just to a correlation level, but to correlation drifting up or down as market conditions change, which is the real-world risk a trading desk has to manage day to day.*
 
 ---
@@ -107,22 +111,28 @@ Two observations worth flagging:
 - **The Tech trade prices the richest in percentage terms among the two 1-year trades (13.05% vs 11.83%)** — directly consistent with Task 1's volatility numbers and Task 2's correlation numbers: S&P Tech's higher standalone volatility, combined with the lowest inter-basket correlation of the book, mechanically widens the distribution of R_A − R_B and therefore the option's value.
 - **CvC and PvP prices are nearly identical for every pair** (e.g. €1,305,041 vs €1,302,946 for Tech, a 0.16% difference) — exactly what put/call correlation parity predicts when the underlying relative-performance distribution is close to symmetric around zero, and a useful internal consistency check on the pricing engine itself.
 
-![Payoff diagram — CAC Tech vs SP Tech](output/figures/06_01_payoff_CAC_Tech_vs_SP_Tech.png)
+<img width="2456" height="965" alt="06_01_payoff_CAC_Tech_vs_SP_Tech" src="https://github.com/user-attachments/assets/8e270ff3-8e87-4721-9622-ea97b347613d" />
+
 *Figure 6a — Left: scatter of the 60,000 simulated (basket A, basket B) terminal performances, with the in-the-money region highlighted. Right: the resulting CvC payoff profile as a function of R_A − R_B.*
 
-![Payoff diagram — CAC Energy vs SP Energy](output/figures/06_02_payoff_CAC_Energy_vs_SP_Ene.png)
+<img width="2457" height="965" alt="06_02_payoff_CAC_Energy_vs_SP_Ene" src="https://github.com/user-attachments/assets/19f6fcc2-21ec-4c54-a8f7-ee32f9b93042" />
+
 *Figure 6b — Same analysis for the Energy pair. Note the tighter scatter cloud relative to Figure 6a, consistent with Energy's slightly higher inter-basket correlation (0.44 vs 0.39).*
 
-![Payoff diagram — CAC Luxury vs SP Media](output/figures/06_03_payoff_CAC_Luxury_vs_SP_Med.png)
+<img width="2455" height="965" alt="06_03_payoff_CAC_Luxury_vs_SP_Med" src="https://github.com/user-attachments/assets/62cd9769-1ce2-4341-b122-014496be5b3c" />
+
 *Figure 6c — Same analysis for the Luxury/Media pair, over its longer 1.5-year maturity.*
 
-![Monte Carlo convergence — CAC Tech vs SP Tech](output/figures/07_01_convergence_CAC_Tech_vs_SP_Tech.png)
+<img width="1917" height="1013" alt="07_01_convergence_CAC_Tech_vs_SP_Tech" src="https://github.com/user-attachments/assets/18e5dc8f-c99d-4f14-9aa0-37dc48f15923" />
+
 *Figure 7a — Running mean of the discounted payoff (with 95% confidence band) as the number of simulated paths grows, for the Tech trade. The estimate stabilizes well before 60,000 paths, confirming the simulation is adequately converged.*
 
-![Monte Carlo convergence — CAC Energy vs SP Energy](output/figures/07_02_convergence_CAC_Energy_vs_SP_Ene.png)
+<img width="1917" height="1013" alt="07_02_convergence_CAC_Energy_vs_SP_Ene" src="https://github.com/user-attachments/assets/2d7732ba-9b9c-4a52-8a88-aa272d50a2b9" />
+
 *Figure 7b — Same convergence diagnostic for the Energy trade.*
 
-![Monte Carlo convergence — CAC Luxury vs SP Media](output/figures/07_03_convergence_CAC_Luxury_vs_SP_Med.png)
+<img width="1917" height="1013" alt="07_03_convergence_CAC_Luxury_vs_SP_Med" src="https://github.com/user-attachments/assets/0b253158-81f6-4e9a-8629-48482df84d03" />
+
 *Figure 7c — Same convergence diagnostic for the Luxury/Media trade.*
 
 ---
@@ -143,13 +153,16 @@ This is also, in plain terms, exactly the risk a broker on that Sunrise Brokers 
 
 **Energy shows the steepest relative collapse (−93.3%)** despite starting from the second-lowest correlation — a reminder that the shape of this curve, not just its starting point, matters for how a book should be hedged.
 
-![Correlation sensitivity — CAC Tech vs SP Tech](output/figures/08_01_correlation_sensitivity_CAC_Tech_vs_SP_Tech.png)
+<img width="1736" height="1013" alt="08_01_correlation_sensitivity_CAC_Tech_vs_SP_Tech" src="https://github.com/user-attachments/assets/b25a26a2-a0d2-40f1-9541-176c3aec7b78" />
+
 *Figure 8a — Price of the CAC Tech vs SP Tech CvC option as a function of imposed inter-basket correlation, with the current estimated historical correlation (0.39) marked as a vertical reference line. This is the "correlation vega" curve — the defining risk profile of the entire product family.*
 
-![Correlation sensitivity — CAC Energy vs SP Energy](output/figures/08_02_correlation_sensitivity_CAC_Energy_vs_SP_Ene.png)
+<img width="1736" height="1013" alt="08_02_correlation_sensitivity_CAC_Energy_vs_SP_Ene" src="https://github.com/user-attachments/assets/bf12a3f6-c59c-4bc4-bf8e-01d45bd7591d" />
+
 *Figure 8b — Same analysis for the Energy pair, showing the steepest proportional price decay of the three trades.*
 
-![Correlation sensitivity — CAC Luxury vs SP Media](output/figures/08_03_correlation_sensitivity_CAC_Luxury_vs_SP_Med.png)
+<img width="1736" height="1013" alt="08_03_correlation_sensitivity_CAC_Luxury_vs_SP_Med" src="https://github.com/user-attachments/assets/2f6e2ecc-84cb-4634-88a7-e0ddb9e88c77" />
+
 *Figure 8c — Same analysis for the Luxury/Media pair, starting from the highest historical correlation (0.51) of the book.*
 
 ---
@@ -167,10 +180,12 @@ The fifth task aggregated the three CvC trades into a single book, sized at a co
 
 The VaR figure is worth explaining rather than just reporting: it lands essentially equal to the full mark-to-model value of the portfolio. This is not a modeling error — it is the expected behavior of a **book of long option positions**. Since every trade payoff is floored at zero (`max(·, 0)`), there exists a plausible simulated scenario in the 5% tail where all three baskets underperform their pair in a way that leaves every option worthless at maturity. For a long-option book, the maximum realistic loss is therefore the full premium paid — which is exactly what the VaR captures here. Framed differently: **this portfolio's downside is fully known and bounded at inception (the price paid), while its upside is asymmetric and driven by exactly the correlation-breakdown scenarios discussed in Task 4.**
 
-![Portfolio composition](output/figures/09_portfolio_composition.png)
+<img width="2389" height="1016" alt="09_portfolio_composition" src="https://github.com/user-attachments/assets/c2b2ed66-93f8-4aff-8f5f-9daa567abb6a" />
+
 *Figure 9 — Left: mark-to-model value of each of the three trades. Right: notional allocation across the book (37% Tech, 30% Energy, 33% Luxury/Media by notional).*
 
-![Portfolio P&L distribution](output/figures/10_portfolio_pnl_distribution.png)
+<img width="1917" height="1015" alt="10_portfolio_pnl_distribution" src="https://github.com/user-attachments/assets/eba62092-9fbd-4a49-8af1-1dcc7c3ad2a3" />
+
 *Figure 10 — Full simulated distribution of portfolio value at maturity (60,000+ resampled scenarios), with the current mark-to-model value and the 95% VaR threshold overlaid. The distribution's right skew — a long tail of large gains against a hard floor near zero — is the visual signature of a long-option book.*
 
 ---
@@ -192,28 +207,36 @@ In both the Tech and Energy pairs, **the S&P500 basket tracks its sector benchma
 
 The **Luxury/Media pair breaks this pattern**: CAC Luxury actually posts the *higher* correlation of the two (0.665 vs 0.670 is essentially a statistical tie, both leading the book alongside S&P Media) — a reminder that European Luxury is, unusually among sectors, a segment where French names are the global benchmark-setters rather than the followers.
 
-![Basket vs sector correlation ranking](output/figures/11_basket_vs_sector_correlation.png)
+<img width="1737" height="1016" alt="11_basket_vs_sector_correlation" src="https://github.com/user-attachments/assets/7f921355-d140-45e0-84b3-fec1de6fb256" />
+
 *Figure 11 — All six baskets ranked by their correlation to their respective sector benchmark. S&P Energy leads the book; CAC Energy and CAC Tech bring up the rear.*
 
-![CAC Tech vs sector](output/figures/12_01_CAC_Tech_vs_sector.png)
+<img width="2459" height="1043" alt="12_01_CAC_Tech_vs_sector" src="https://github.com/user-attachments/assets/16081c38-6b9c-4518-8566-353c522a5cf5" />
+
 *Figure 12a — CAC Tech cumulative performance against MSCI World IT (left), and the underlying daily-return scatter with fitted beta (right).*
 
-![S&P Tech vs sector](output/figures/12_02_S&P_Tech_vs_sector.png)
+<img width="2459" height="1043" alt="12_02_S P_Tech_vs_sector" src="https://github.com/user-attachments/assets/c393f653-f073-4e3e-966c-64201334d882" />
+
 *Figure 12b — Same analysis for S&P Tech — note the visibly tighter return scatter versus Figure 12a, consistent with its higher correlation and beta.*
 
-![CAC Energy vs sector](output/figures/12_03_CAC_Energy_vs_sector.png)
+<img width="2459" height="1043" alt="12_03_CAC_Energy_vs_sector" src="https://github.com/user-attachments/assets/40343a84-2821-4098-be97-1826b545bb50" />
+
 *Figure 12c — CAC Energy against MSCI World Energy.*
 
-![S&P Energy vs sector](output/figures/12_04_S&P_Energy_vs_sector.png)
+<img width="2459" height="1043" alt="12_04_S P_Energy_vs_sector" src="https://github.com/user-attachments/assets/0624e2df-a127-49e5-b568-32364feb6078" />
+
 *Figure 12d — S&P Energy against MSCI World Energy — the tightest-tracking pair in the entire dataset (ρ = 0.727).*
 
-![CAC Luxury vs sector](output/figures/12_05_CAC_Luxury_vs_sector.png)
+<img width="2459" height="1043" alt="12_05_CAC_Luxury_vs_sector" src="https://github.com/user-attachments/assets/fdc773b3-75ae-4ff8-9663-238f35ea3d99" />
+
 *Figure 12e — CAC Luxury against MSCI World Luxury/Consumer Discretionary.*
 
-![S&P Media vs sector](output/figures/12_06_S&P_Media_vs_sector.png)
+<img width="2459" height="1043" alt="12_06_S P_Media_vs_sector" src="https://github.com/user-attachments/assets/550f3e17-578f-4fe7-bf56-d2162f718b05" />
+
 *Figure 12f — S&P Media against MSCI World Communication Services.*
 
-![Rolling correlation, baskets vs sector](output/figures/13_rolling_correlation_sectors.png)
+<img width="2097" height="1016" alt="13_rolling_correlation_sectors" src="https://github.com/user-attachments/assets/395f684d-a28f-4b2c-82a7-fcc2b381eddc" />
+
 *Figure 13 — 60-day rolling correlation of every basket against its sector benchmark. This is the closing chart of the project: it shows that even the strongest static relationships above (S&P Energy, CAC Luxury) are not constant through time, reinforcing Task 2 and Task 4's central message that correlation is a *regime*, not a fixed parameter — and that any CvC/PvP book has to be risk-managed with that instability explicitly in mind.*
 
 ---
