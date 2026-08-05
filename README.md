@@ -45,7 +45,7 @@ Market data (5 years of daily prices) is sourced from Yahoo Finance where availa
 
 The gap is immediately informative: **S&P Tech is the most volatile basket of the six by a clear margin (~35%)**, almost entirely driven by Nvidia's idiosyncratic volatility — a reminder that even a "sector-matched" pair can carry very different risk profiles on each side of the Atlantic before any correlation effect is even considered.
 
-![CAC40 sector baskets — cumulative performance](output/figures/01_cac40_baskets.png)
+
 *Figure 1 — Cumulative performance (base 100) of the three CAC40 sector baskets over the 5-year window.*
 
 ![S&P500 sector baskets — cumulative performance](output/figures/02_sp500_baskets.png)
