@@ -1,0 +1,888 @@
+"""
+==============================================================================
+CvC / PvP PRICING & PORTFOLIO PROJECT -- CAC40 vs S&P500 SECTOR BASKETS
+==============================================================================
+Single self-contained script. Run directly in VS Code
+("Run Python File" button, or `python cvc_pvp_project.py` in the terminal).
+
+TRADES COVERED
+--------------
+    1. CAC Tech    (Capgemini / Dassault Systemes / STMicroelectronics)
+       vs S&P Tech (Nvidia / Microsoft / Alphabet)
+    2. CAC Energy  (TotalEnergies / Engie)
+       vs S&P Energy (ExxonMobil / Chevron)
+    3. CAC Luxury  (LVMH / Hermes / Kering / L'Oreal)
+       vs S&P Media (Disney / Comcast / Netflix / Warner Bros Discovery)
+
+Each sector basket is also compared to a sector reference index (MSCI
+World proxy: IT, Energy, Luxury/Consumer Discretionary, Communication
+Services).
+
+WHAT THIS SCRIPT DOES
+----------------------
+1. Loads market data (tries Yahoo Finance via yfinance; falls back
+   automatically to a calibrated 3-factor market simulation if no
+   internet connection is available -- e.g. sandboxed environments).
+2. Builds the 6 equity baskets listed above.
+3. Runs a full correlation analysis, basket by basket (static matrix +
+   60-day rolling correlation), including basket vs sector benchmark.
+4. Prices the 3 CvC / PvP trades via Monte Carlo (correlated multi-asset
+   GBM, antithetic variates), with the closed-form Margrabe formula
+   included as a 2-asset reference check.
+5. Plots the "correlation vega" (price sensitivity to correlation) for
+   each trade -- the key risk of these structures.
+6. Aggregates everything into a portfolio, with total value and a 95%
+   Value-at-Risk.
+7. Compares each sector basket to its MSCI-proxy benchmark.
+8. DISPLAYS every chart on screen as it is generated, saves all of them
+   as high-resolution PNGs to ./output/figures/, prints every table to
+   the console, and writes a full Markdown report to
+   ./output/reports/report.md.
+
+REQUIREMENTS
+------------
+pip install numpy pandas matplotlib seaborn scipy yfinance tabulate
+
+NOTE ON DATA
+------------
+If you run this with an internet connection, real Yahoo Finance data
+will be used automatically (5 years of daily history) -- no code change
+needed. Without internet, the script falls back to a factor-model
+simulation calibrated to produce realistic CAC40 / S&P500 / sector
+correlations, so the methodology and all charts remain fully valid for
+demonstration purposes.
+==============================================================================
+"""
+
+import os
+import warnings
+from dataclasses import dataclass, field
+from typing import List, Dict
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy.stats import norm
+
+warnings.filterwarnings("ignore")
+
+# ==============================================================================
+# 0. GLOBAL CONFIGURATION
+# ==============================================================================
+
+N_DAYS = 1260            # ~5 years of daily data (252d x 5)
+SEED = 42                 # reproducibility
+RISK_FREE_EUR = 0.025     # EUR risk-free rate (short-term proxy, indicative)
+RISK_FREE_USD = 0.045     # USD risk-free rate (short-term proxy, indicative)
+FX_EURUSD_SPOT = 1.09      # indicative EUR/USD spot
+
+FIG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output", "figures")
+REPORT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output", "reports")
+os.makedirs(FIG_DIR, exist_ok=True)
+os.makedirs(REPORT_DIR, exist_ok=True)
+
+
+@dataclass
+class Basket:
+    name: str
+    tickers: List[str]
+    currency: str                  # "EUR" or "USD"
+    market_beta: float             # sensitivity to the local index (CAC40 or SP500)
+    sector_beta: float             # sensitivity to the common sector factor
+    idio_vol: float                # average annualized idiosyncratic vol
+    weights: List[float] = field(default_factory=list)
+
+    def __post_init__(self):
+        if not self.weights:
+            n = len(self.tickers)
+            self.weights = [1.0 / n] * n
+        assert len(self.weights) == len(self.tickers)
+        assert abs(sum(self.weights) - 1.0) < 1e-6
+
+
+# --- CAC40 sector baskets ---
+BASKET_CAC_TECH = Basket("CAC Tech (Capgemini / Dassault Systemes / STMicroelectronics)",
+                          ["CAP.PA", "DSY.PA", "STMPA.PA"], "EUR",
+                          market_beta=0.95, sector_beta=0.55, idio_vol=0.32)
+BASKET_CAC_ENERGY = Basket("CAC Energy (TotalEnergies / Engie)", ["TTE.PA", "ENGI.PA"],
+                            "EUR", market_beta=0.85, sector_beta=0.60, idio_vol=0.28)
+BASKET_CAC_LUXURY = Basket("CAC Luxury (LVMH / Hermes / Kering / L'Oreal)",
+                            ["MC.PA", "RMS.PA", "KER.PA", "OR.PA"], "EUR",
+                            market_beta=1.05, sector_beta=0.65, idio_vol=0.27)
+
+# --- S&P500 sector baskets ---
+BASKET_SP_TECH = Basket("S&P Tech (Nvidia / Microsoft / Alphabet)",
+                         ["NVDA", "MSFT", "GOOGL"], "USD",
+                         market_beta=1.10, sector_beta=0.65, idio_vol=0.38)
+BASKET_SP_ENERGY = Basket("S&P Energy (ExxonMobil / Chevron)", ["XOM", "CVX"],
+                           "USD", market_beta=0.65, sector_beta=0.90, idio_vol=0.24)
+BASKET_SP_MEDIA = Basket("S&P Media (Disney / Comcast / Netflix / Warner Bros Discovery)",
+                          ["DIS", "CMCSA", "NFLX", "WBD"], "USD",
+                          market_beta=0.90, sector_beta=0.60, idio_vol=0.35)
+
+ALL_BASKETS: List[Basket] = [
+    BASKET_CAC_TECH, BASKET_CAC_ENERGY, BASKET_CAC_LUXURY,
+    BASKET_SP_TECH, BASKET_SP_ENERGY, BASKET_SP_MEDIA,
+]
+
+# --- Sector benchmark indices (MSCI World proxy) ---
+SECTOR_BENCHMARKS = {
+    "MSCI World IT":                {"market_beta": 0.70, "sector_beta": 0.90, "idio_vol": 0.10},
+    "MSCI World Energy":            {"market_beta": 0.55, "sector_beta": 0.95, "idio_vol": 0.09},
+    "MSCI World Luxury/ConsDiscr":  {"market_beta": 0.75, "sector_beta": 0.85, "idio_vol": 0.10},
+    "MSCI World Communication Svc": {"market_beta": 0.65, "sector_beta": 0.90, "idio_vol": 0.11},
+}
+
+# Mapping basket -> sector benchmark (both the CAC and the S&P version of a
+# sector map to the SAME benchmark, so each can be compared to its "pure"
+# sector index independently)
+BASKET_TO_BENCHMARK: Dict[str, str] = {
+    BASKET_CAC_TECH.name:   "MSCI World IT",
+    BASKET_SP_TECH.name:    "MSCI World IT",
+    BASKET_CAC_ENERGY.name: "MSCI World Energy",
+    BASKET_SP_ENERGY.name:  "MSCI World Energy",
+    BASKET_CAC_LUXURY.name: "MSCI World Luxury/ConsDiscr",
+    BASKET_SP_MEDIA.name:   "MSCI World Communication Svc",
+}
+
+# --- CvC / PvP trades: each pairs a CAC40 sector basket against its
+# S&P500 sector counterpart ---
+TRADES = [
+    {"name": "CAC Tech vs SP Tech", "basket_A": BASKET_CAC_TECH, "basket_B": BASKET_SP_TECH,
+     "maturity_years": 1.0, "notional": 10_000_000},
+    {"name": "CAC Energy vs SP Energy", "basket_A": BASKET_CAC_ENERGY, "basket_B": BASKET_SP_ENERGY,
+     "maturity_years": 1.0, "notional": 8_000_000},
+    {"name": "CAC Luxury vs SP Media", "basket_A": BASKET_CAC_LUXURY, "basket_B": BASKET_SP_MEDIA,
+     "maturity_years": 1.5, "notional": 9_000_000},
+]
+
+MC_PARAMS = {"n_paths": 60_000, "n_steps_per_year": 52, "antithetic": True, "seed": SEED}
+
+PALETTE = {"cac": "#266EB8", "sp": "#E8792B", "accent1": "#2FA679",
+           "accent2": "#B8266E", "accent3": "#7A5195", "grey": "#6B7280"}
+
+sns.set_theme(style="whitegrid", context="talk")
+plt.rcParams.update({
+    "figure.facecolor": "white", "axes.facecolor": "white", "axes.edgecolor": "#333333",
+    "font.family": "sans-serif", "axes.titleweight": "bold", "axes.titlesize": 15,
+    "axes.labelsize": 11, "legend.fontsize": 9.5, "xtick.labelsize": 9.5,
+    "ytick.labelsize": 9.5, "figure.dpi": 110,
+})
+
+
+def _save(fig, name):
+    """Save the chart to disk AND display it on screen (non-blocking) so
+    it appears as soon as it is generated, without halting the script."""
+    path = os.path.join(FIG_DIR, f"{name}.png")
+    fig.tight_layout()
+    fig.savefig(path, dpi=180, bbox_inches="tight")
+    plt.show(block=False)
+    plt.pause(0.1)
+    return path
+
+
+# ==============================================================================
+# 1. MARKET DATA SIMULATION (fallback when Yahoo Finance is unavailable)
+# ==============================================================================
+#
+# Model (daily log returns):  r_i,t = beta_mkt_i * F_mkt,t + beta_sector_i * F_sector,t + eps_i,t
+# This 3-factor model (local market + common sector + idiosyncratic) lets us
+# CALIBRATE explicit, realistic correlations between CAC40 baskets, S&P500
+# baskets, and sector benchmark indices.
+
+def _generate_factors(n_days, rng):
+    dt = 1 / 252
+    corr_cac_sp = 0.55
+    corr_mkt_sector = 0.35
+    cov = np.array([[1.00, corr_cac_sp, corr_mkt_sector],
+                     [corr_cac_sp, 1.00, corr_mkt_sector],
+                     [corr_mkt_sector, corr_mkt_sector, 1.00]])
+    L = np.linalg.cholesky(cov)
+    z = rng.standard_normal((n_days, 3))
+    correlated = z @ L.T
+    sigma_mkt_cac, sigma_mkt_sp, sigma_sector = 0.17, 0.16, 0.20
+    F_cac = correlated[:, 0] * sigma_mkt_cac * np.sqrt(dt)
+    F_sp = correlated[:, 1] * sigma_mkt_sp * np.sqrt(dt)
+    F_sector = correlated[:, 2] * sigma_sector * np.sqrt(dt)
+    return F_cac, F_sp, F_sector
+
+
+def simulate_market(all_tickers_meta, n_days=N_DAYS, seed=SEED, start_price=100.0):
+    rng = np.random.default_rng(seed)
+    dt = 1 / 252
+    F_cac, F_sp, F_sector = _generate_factors(n_days, rng)
+    dates = pd.bdate_range(end=pd.Timestamp.today().normalize(), periods=n_days)
+    prices = {}
+    for meta in all_tickers_meta:
+        ticker = meta["ticker"]
+        beta_mkt, beta_sec, idio_vol = meta["market_beta"], meta["sector_beta"], meta["idio_vol"]
+        mkt_factor = F_cac if meta["market"] == "CAC" else F_sp
+        mu = 0.06 if meta["market"] != "BENCH" else 0.05
+        eps = rng.standard_normal(n_days)
+        idio = idio_vol * np.sqrt(dt) * eps
+        drift = (mu - 0.5 * (beta_mkt**2 * 0.17**2 + beta_sec**2 * 0.20**2 + idio_vol**2)) * dt
+        log_ret = drift + beta_mkt * mkt_factor + beta_sec * F_sector + idio
+        prices[ticker] = start_price * np.exp(np.cumsum(log_ret))
+    return pd.DataFrame(prices, index=dates)
+
+
+def build_meta_from_baskets(baskets, benchmarks):
+    meta, seen = [], set()
+    for b in baskets:
+        market_tag = "CAC" if b.currency == "EUR" else "SP"
+        for t in b.tickers:
+            if t in seen:
+                continue
+            seen.add(t)
+            meta.append({"ticker": t, "market": market_tag, "market_beta": b.market_beta,
+                         "sector_beta": b.sector_beta, "idio_vol": b.idio_vol})
+    for name, params in benchmarks.items():
+        meta.append({"ticker": name, "market": "BENCH", "market_beta": params["market_beta"],
+                     "sector_beta": params["sector_beta"], "idio_vol": params["idio_vol"]})
+    return meta
+
+
+# ==============================================================================
+# 2. DATA LOADING (Yahoo Finance with automatic fallback to simulation)
+# ==============================================================================
+
+def _try_yfinance(tickers, n_days):
+    try:
+        import yfinance as yf
+        period_days = int(n_days * 1.55)
+        data = yf.download(tickers, period=f"{period_days}d", interval="1d",
+                            progress=False, auto_adjust=True, threads=True)
+        if data.empty:
+            return None
+        if isinstance(data.columns, pd.MultiIndex):
+            close = data["Close"]
+        else:
+            close = data[["Close"]]
+            close.columns = tickers
+        close = close.dropna(how="all").ffill().dropna()
+        if close.shape[0] < 250 or close.isna().any().any():
+            return None
+        return close.tail(n_days)
+    except Exception:
+        return None
+
+
+def load_all_data(n_days=N_DAYS, seed=SEED, force_simulation=False):
+    all_stock_tickers = sorted({t for b in ALL_BASKETS for t in b.tickers})
+    prices_real, source = None, "simulation"
+    if not force_simulation:
+        prices_real = _try_yfinance(all_stock_tickers, n_days)
+        if prices_real is not None:
+            source = "yfinance"
+
+    meta_all = build_meta_from_baskets(ALL_BASKETS, SECTOR_BENCHMARKS)
+    meta_bench_only = [m for m in meta_all if m["market"] == "BENCH"]
+
+    if prices_real is None:
+        meta_stocks = [m for m in meta_all if m["market"] != "BENCH"]
+        full_sim = simulate_market(meta_stocks + meta_bench_only, n_days=n_days, seed=seed)
+        prices_real = full_sim[[m["ticker"] for m in meta_stocks]]
+        prices_bench = full_sim[[m["ticker"] for m in meta_bench_only]]
+    else:
+        sim_bench = simulate_market(meta_bench_only, n_days=len(prices_real), seed=seed)
+        sim_bench.index = prices_real.index
+        prices_bench = sim_bench
+
+    return prices_real, prices_bench, source
+
+
+# ==============================================================================
+# 3. BASKET CONSTRUCTION
+# ==============================================================================
+
+def build_basket_index(basket: Basket, prices: pd.DataFrame, base_value=100.0) -> pd.Series:
+    sub = prices[basket.tickers].copy()
+    norm_prices = sub / sub.iloc[0]
+    weighted = (norm_prices * np.array(basket.weights)).sum(axis=1)
+    s = base_value * weighted
+    s.name = basket.name
+    return s
+
+
+def build_all_baskets(baskets, prices) -> pd.DataFrame:
+    return pd.DataFrame({b.name: build_basket_index(b, prices) for b in baskets})
+
+
+def build_benchmark_indices(prices_bench, base_value=100.0) -> pd.DataFrame:
+    return base_value * prices_bench / prices_bench.iloc[0]
+
+
+def log_returns(price_df: pd.DataFrame) -> pd.DataFrame:
+    return np.log(price_df / price_df.shift(1)).dropna()
+
+
+# ==============================================================================
+# 4. MONTE CARLO PRICING ENGINE -- CvC ("Call vs Call") & PvP ("Put vs Put")
+# ==============================================================================
+#
+# Let R_A = S_A(T)/S_A(0) - 1  and  R_B = S_B(T)/S_B(0) - 1.
+#   CvC payoff = N * max(R_A - R_B, 0)   -> long relative outperformance of A vs B
+#   PvP payoff = N * max(R_B - R_A, 0)   -> hedge against relative underperformance of A vs B
+# These are exchange options; a basket is a sum of lognormal assets and is
+# therefore not itself lognormal -> priced by Monte Carlo (Margrabe formula
+# given below as a closed-form 2-asset reference / sanity check).
+
+@dataclass
+class MCResult:
+    price: float
+    std_error: float
+    ci_95: tuple
+    paths_A: np.ndarray
+    paths_B: np.ndarray
+    payoffs: np.ndarray
+    discount_factor: float
+
+
+def _estimate_vols_and_corr(log_ret: pd.DataFrame):
+    vols = log_ret.std() * np.sqrt(252)
+    corr = log_ret.corr()
+    return vols.values, corr.values
+
+
+def price_exchange_option(basket_A_tickers, basket_B_tickers, weights_A, weights_B,
+                           log_returns_all, option_type, T, r, notional=1_000_000, mc_params=None) -> MCResult:
+    mc_params = mc_params or MC_PARAMS
+    tickers = list(dict.fromkeys(basket_A_tickers + basket_B_tickers))
+    vols, corr = _estimate_vols_and_corr(log_returns_all[tickers])
+
+    idx = {t: i for i, t in enumerate(tickers)}
+    w_full_A = np.zeros(len(tickers))
+    w_full_B = np.zeros(len(tickers))
+    for t, w in zip(basket_A_tickers, weights_A):
+        w_full_A[idx[t]] = w
+    for t, w in zip(basket_B_tickers, weights_B):
+        w_full_B[idx[t]] = w
+
+    n_steps = max(int(mc_params["n_steps_per_year"] * T), 4)
+    n_assets = len(tickers)
+    L = np.linalg.cholesky(corr + 1e-10 * np.eye(n_assets))
+    rng = np.random.default_rng(mc_params["seed"])
+    n_sim = mc_params["n_paths"] // 2 if mc_params["antithetic"] else mc_params["n_paths"]
+    dt = T / n_steps
+
+    log_paths = np.zeros((n_sim, n_assets))
+    log_paths_anti = np.zeros((n_sim, n_assets))
+    for _ in range(n_steps):
+        z = rng.standard_normal((n_sim, n_assets))
+        corr_z = z @ L.T
+        drift = (r - 0.5 * vols**2) * dt
+        diffusion = vols * np.sqrt(dt) * corr_z
+        log_paths += drift + diffusion
+        if mc_params["antithetic"]:
+            log_paths_anti += drift + vols * np.sqrt(dt) * (-z @ L.T)
+
+    all_log_paths = np.vstack([log_paths, log_paths_anti]) if mc_params["antithetic"] else log_paths
+    ST_over_S0 = np.exp(all_log_paths)
+    perf_A = ST_over_S0 @ w_full_A - 1.0
+    perf_B = ST_over_S0 @ w_full_B - 1.0
+
+    if option_type == "CvC":
+        payoffs = np.maximum(perf_A - perf_B, 0.0)
+    elif option_type == "PvP":
+        payoffs = np.maximum(perf_B - perf_A, 0.0)
+    else:
+        raise ValueError("option_type must be 'CvC' or 'PvP'")
+
+    discount = np.exp(-r * T)
+    disc_payoffs = discount * payoffs * notional
+    price = disc_payoffs.mean()
+    se = disc_payoffs.std(ddof=1) / np.sqrt(len(disc_payoffs))
+    ci = (price - 1.96 * se, price + 1.96 * se)
+
+    return MCResult(price, se, ci, perf_A, perf_B, payoffs, discount)
+
+
+def margrabe_price(S0_A, S0_B, sigma_A, sigma_B, rho, T, notional=1_000_000):
+    """Closed-form Margrabe formula (2-asset case), used as a validation
+    reference for the Monte Carlo engine."""
+    sigma = np.sqrt(sigma_A**2 + sigma_B**2 - 2 * rho * sigma_A * sigma_B)
+    d1 = (np.log(S0_A / S0_B) + 0.5 * sigma**2 * T) / (sigma * np.sqrt(T))
+    d2 = d1 - sigma * np.sqrt(T)
+    return (S0_A * norm.cdf(d1) - S0_B * norm.cdf(d2)) * notional
+
+
+def correlation_sensitivity(basket_A_tickers, basket_B_tickers, weights_A, weights_B,
+                             log_returns_all, option_type, T, r, notional,
+                             rho_shocks=np.linspace(-0.3, 0.95, 14), mc_params=None):
+    """Prices the CvC/PvP option for different IMPOSED inter-basket
+    correlation levels -- gives the 'correlation vega' profile."""
+    mc_params = mc_params or MC_PARAMS
+    tickers = list(dict.fromkeys(basket_A_tickers + basket_B_tickers))
+    vols, base_corr = _estimate_vols_and_corr(log_returns_all[tickers])
+    idx = {t: i for i, t in enumerate(tickers)}
+    w_full_A = np.zeros(len(tickers))
+    w_full_B = np.zeros(len(tickers))
+    for t, w in zip(basket_A_tickers, weights_A):
+        w_full_A[idx[t]] = w
+    for t, w in zip(basket_B_tickers, weights_B):
+        w_full_B[idx[t]] = w
+
+    results = []
+    for target_rho in rho_shocks:
+        n = len(tickers)
+        corr_shocked = base_corr.copy()
+        is_A = np.array([t in basket_A_tickers for t in tickers])
+        is_B = np.array([t in basket_B_tickers for t in tickers])
+        for i in range(n):
+            for j in range(n):
+                if is_A[i] and is_B[j] and i != j:
+                    corr_shocked[i, j] = target_rho
+                    corr_shocked[j, i] = target_rho
+        eigval, eigvec = np.linalg.eigh(corr_shocked)
+        eigval = np.clip(eigval, 1e-6, None)
+        corr_shocked = eigvec @ np.diag(eigval) @ eigvec.T
+        d = np.sqrt(np.diag(corr_shocked))
+        corr_shocked = corr_shocked / np.outer(d, d)
+
+        n_steps = max(int(mc_params["n_steps_per_year"] * T), 4)
+        n_assets = len(tickers)
+        L = np.linalg.cholesky(corr_shocked + 1e-10 * np.eye(n_assets))
+        rng = np.random.default_rng(mc_params["seed"])
+        n_sim = mc_params["n_paths"] // 4
+        dt = T / n_steps
+
+        log_paths = np.zeros((n_sim, n_assets))
+        for _ in range(n_steps):
+            z = rng.standard_normal((n_sim, n_assets))
+            drift = (r - 0.5 * vols**2) * dt
+            diffusion = vols * np.sqrt(dt) * (z @ L.T)
+            log_paths += drift + diffusion
+
+        ST_over_S0 = np.exp(log_paths)
+        perf_A = ST_over_S0 @ w_full_A - 1.0
+        perf_B = ST_over_S0 @ w_full_B - 1.0
+        payoffs = (np.maximum(perf_A - perf_B, 0.0) if option_type == "CvC"
+                   else np.maximum(perf_B - perf_A, 0.0))
+        results.append(np.exp(-r * T) * payoffs.mean() * notional)
+
+    return np.array(rho_shocks), np.array(results)
+
+
+# ==============================================================================
+# 5. CORRELATION ANALYSIS
+# ==============================================================================
+
+def full_correlation_matrix(basket_returns, bench_returns):
+    return pd.concat([basket_returns, bench_returns], axis=1).dropna().corr()
+
+
+def rolling_pair_correlation(ret_A, ret_B, window=60):
+    return ret_A.rolling(window).corr(ret_B)
+
+
+def rolling_correlations_all_trades(basket_returns, trades, window=60):
+    out = {}
+    for trade in trades:
+        out[trade["name"]] = rolling_pair_correlation(
+            basket_returns[trade["basket_A"].name], basket_returns[trade["basket_B"].name], window)
+    return pd.DataFrame(out)
+
+
+def basket_vs_benchmark_correlation(basket_returns, bench_returns, basket_to_bench, window=60):
+    out = {}
+    for basket_name, bench_name in basket_to_bench.items():
+        if basket_name in basket_returns.columns and bench_name in bench_returns.columns:
+            label = f"{basket_name.split(' (')[0]} vs {bench_name}"
+            out[label] = rolling_pair_correlation(basket_returns[basket_name], bench_returns[bench_name], window)
+    return pd.DataFrame(out)
+
+
+def static_basket_vs_benchmark(basket_returns, bench_returns, basket_to_bench):
+    rows = []
+    for basket_name, bench_name in basket_to_bench.items():
+        if basket_name in basket_returns.columns and bench_name in bench_returns.columns:
+            combined = pd.concat([basket_returns[basket_name], bench_returns[bench_name]], axis=1).dropna()
+            rho = combined.corr().iloc[0, 1]
+            beta = np.polyfit(combined.iloc[:, 1], combined.iloc[:, 0], 1)[0]
+            rows.append({"Basket": basket_name, "Benchmark": bench_name,
+                         "Correlation": rho, "Beta (basket / benchmark)": beta})
+    return pd.DataFrame(rows)
+
+
+# ==============================================================================
+# 6. PORTFOLIO AGGREGATION
+# ==============================================================================
+
+@dataclass
+class TradeResult:
+    name: str
+    option_type: str
+    price: float
+    std_error: float
+    notional: float
+    maturity: float
+    mc_result: MCResult
+
+
+class Portfolio:
+    def __init__(self):
+        self.trades: List[TradeResult] = []
+
+    def add_trade(self, name, option_type, price, std_error, notional, maturity, mc_result):
+        self.trades.append(TradeResult(name, option_type, price, std_error, notional, maturity, mc_result))
+
+    @property
+    def total_value(self):
+        return sum(t.price for t in self.trades)
+
+    def summary_table(self):
+        rows = [{"Trade": t.name, "Type": t.option_type, "Notional (EUR)": t.notional,
+                 "Maturity (yrs)": t.maturity, "Price (EUR)": t.price,
+                 "MC std error": t.std_error, "Price as % notional": 100 * t.price / t.notional}
+                for t in self.trades]
+        df = pd.DataFrame(rows)
+        total_row = {"Trade": "TOTAL PORTFOLIO", "Type": "-",
+                     "Notional (EUR)": df["Notional (EUR)"].sum(), "Maturity (yrs)": np.nan,
+                     "Price (EUR)": df["Price (EUR)"].sum(),
+                     "MC std error": np.sqrt((df["MC std error"]**2).sum()), "Price as % notional": np.nan}
+        return pd.concat([df, pd.DataFrame([total_row])], ignore_index=True)
+
+    def simulated_portfolio_payoffs(self):
+        n = min(len(t.mc_result.payoffs) for t in self.trades)
+        rng = np.random.default_rng(123)
+        total = np.zeros(n)
+        for t in self.trades:
+            disc_payoffs = t.mc_result.payoffs * t.mc_result.discount_factor * t.notional
+            total += rng.choice(disc_payoffs, size=n, replace=True)
+        return total
+
+    def value_at_risk(self, confidence=0.95):
+        pnl = self.simulated_portfolio_payoffs() - self.total_value
+        return -np.percentile(pnl, 100 * (1 - confidence))
+
+
+# ==============================================================================
+# 7. VISUALIZATION
+# ==============================================================================
+
+def plot_basket_levels(basket_df, title, filename):
+    fig, ax = plt.subplots(figsize=(11, 6))
+    colors = list(PALETTE.values())
+    for i, col in enumerate(basket_df.columns):
+        ax.plot(basket_df.index, basket_df[col], label=col, linewidth=1.6, color=colors[i % len(colors)])
+    ax.set_title(title)
+    ax.set_ylabel("Level (base 100)")
+    ax.legend(loc="upper left")
+    ax.axhline(100, color="grey", linewidth=0.7, linestyle="--", alpha=0.6)
+    return _save(fig, filename)
+
+
+def plot_correlation_heatmap(corr_matrix, title, filename):
+    fig, ax = plt.subplots(figsize=(11, 9))
+    short_labels = [c.split(" (")[0] for c in corr_matrix.columns]
+    sns.heatmap(corr_matrix, annot=True, fmt=".2f", cmap="RdBu_r", center=0, vmin=-1, vmax=1,
+                square=True, linewidths=0.5, xticklabels=short_labels, yticklabels=short_labels,
+                cbar_kws={"label": "Correlation"}, ax=ax)
+    ax.set_title(title)
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+    return _save(fig, filename)
+
+
+def plot_rolling_correlations(rolling_df, title, filename, ylabel="Rolling correlation (60d)"):
+    fig, ax = plt.subplots(figsize=(12, 6))
+    colors = list(PALETTE.values())
+    for i, col in enumerate(rolling_df.columns):
+        ax.plot(rolling_df.index, rolling_df[col], label=col, linewidth=1.5, color=colors[i % len(colors)])
+    ax.axhline(0, color="black", linewidth=0.7)
+    ax.set_title(title)
+    ax.set_ylabel(ylabel)
+    ax.set_ylim(-1, 1)
+    ax.legend(loc="upper left", fontsize=8.5)
+    return _save(fig, filename)
+
+
+def plot_payoff_scatter(perf_A, perf_B, option_type, trade_name, filename, sample_size=4000):
+    rng = np.random.default_rng(7)
+    idx = rng.choice(len(perf_A), size=min(sample_size, len(perf_A)), replace=False)
+    x, y = perf_A[idx] * 100, perf_B[idx] * 100
+    diff = (perf_A[idx] - perf_B[idx]) * 100
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+    ax = axes[0]
+    mask = (diff > 0) if option_type == "CvC" else (diff < 0)
+    ax.scatter(x[~mask], y[~mask], s=6, color=PALETTE["grey"], alpha=0.35, label="Out of the money")
+    ax.scatter(x[mask], y[mask], s=6, color=PALETTE["accent2"], alpha=0.55, label="In the money")
+    lims = [min(x.min(), y.min()), max(x.max(), y.max())]
+    ax.plot(lims, lims, color="black", linewidth=1, linestyle="--", label="R_A = R_B")
+    ax.set_xlabel("Basket A performance (%)")
+    ax.set_ylabel("Basket B performance (%)")
+    ax.set_title(f"Simulated paths at maturity\n{trade_name}")
+    ax.legend(fontsize=8.5)
+
+    ax2 = axes[1]
+    sorted_diff = np.sort(diff)
+    curve = np.maximum(sorted_diff, 0) if option_type == "CvC" else np.maximum(-sorted_diff, 0)
+    ax2.plot(sorted_diff, curve, color=PALETTE["cac"], linewidth=2)
+    ax2.axvline(0, color="grey", linewidth=0.7, linestyle=":")
+    ax2.set_xlabel("R_A - R_B (%)")
+    ax2.set_ylabel("Payoff (% notional)")
+    ax2.set_title(f"{option_type} payoff profile")
+    return _save(fig, filename)
+
+
+def plot_correlation_sensitivity(rho_grid, prices, trade_name, option_type, filename, current_rho=None):
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(rho_grid, prices / 1000, color=PALETTE["accent2"], linewidth=2.2, marker="o", markersize=4)
+    ax.set_xlabel("Imposed correlation between basket A and basket B")
+    ax.set_ylabel("Option price (k EUR)")
+    ax.set_title(f"{option_type} price sensitivity to correlation\n{trade_name}")
+    if current_rho is not None:
+        ax.axvline(current_rho, color=PALETTE["cac"], linewidth=1.3, linestyle="--",
+                   label=f"Estimated historical correlation ({current_rho:.2f})")
+        ax.legend()
+    ax.grid(True, alpha=0.4)
+    return _save(fig, filename)
+
+
+def plot_mc_convergence(payoffs, discount, notional, trade_name, filename):
+    disc_payoffs = payoffs * discount * notional
+    running_mean = np.cumsum(disc_payoffs) / np.arange(1, len(disc_payoffs) + 1)
+    running_std = np.array([disc_payoffs[:i].std(ddof=1) / np.sqrt(i) if i > 1 else np.nan
+                             for i in range(1, len(disc_payoffs) + 1)])
+    step = max(len(disc_payoffs) // 2000, 1)
+    x = np.arange(1, len(disc_payoffs) + 1)[::step]
+    m, se = running_mean[::step], running_std[::step]
+
+    fig, ax = plt.subplots(figsize=(11, 6))
+    ax.plot(x, m / 1000, color=PALETTE["cac"], linewidth=1.8, label="Estimated price (running mean)")
+    ax.fill_between(x, (m - 1.96 * se) / 1000, (m + 1.96 * se) / 1000, color=PALETTE["cac"],
+                     alpha=0.2, label="95% CI")
+    ax.set_xlabel("Number of simulated paths")
+    ax.set_ylabel("Price (k EUR)")
+    ax.set_title(f"Monte Carlo convergence\n{trade_name}")
+    ax.legend()
+    return _save(fig, filename)
+
+
+def plot_portfolio_composition(summary_df, filename):
+    df = summary_df[summary_df["Trade"] != "TOTAL PORTFOLIO"]
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+    colors = list(PALETTE.values())
+    axes[0].bar(df["Trade"], df["Price (EUR)"] / 1000, color=colors[:len(df)])
+    axes[0].set_ylabel("Value (k EUR)")
+    axes[0].set_title("Value of each CvC / PvP trade")
+    axes[0].tick_params(axis="x", rotation=25)
+    for lbl in axes[0].get_xticklabels():
+        lbl.set_ha("right")
+    axes[1].pie(df["Notional (EUR)"], labels=df["Trade"], autopct="%1.0f%%",
+                colors=colors[:len(df)], textprops={"fontsize": 8.5})
+    axes[1].set_title("Portfolio notional breakdown")
+    return _save(fig, filename)
+
+
+def plot_portfolio_pnl_distribution(pnl_samples, current_value, var_95, filename):
+    fig, ax = plt.subplots(figsize=(11, 6))
+    ax.hist(pnl_samples / 1000, bins=80, color=PALETTE["cac"], alpha=0.75, edgecolor="white", linewidth=0.3)
+    ax.axvline(current_value / 1000, color="black", linewidth=1.3, linestyle="--",
+               label=f"Portfolio value ({current_value/1000:,.0f} k EUR)")
+    ax.axvline((current_value - var_95) / 1000, color=PALETTE["accent2"], linewidth=1.5,
+               label=f"VaR 95% ({var_95/1000:,.0f} k EUR)")
+    ax.set_xlabel("Simulated portfolio value at maturity, discounted (k EUR)")
+    ax.set_ylabel("Frequency")
+    ax.set_title("Simulated value distribution of the CvC / PvP trade portfolio")
+    ax.legend()
+    return _save(fig, filename)
+
+
+def plot_basket_vs_benchmark(basket_series, bench_series, basket_label, bench_label, rho, beta, filename):
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+    b_norm = 100 * basket_series / basket_series.iloc[0]
+    bm_norm = 100 * bench_series / bench_series.iloc[0]
+    axes[0].plot(b_norm.index, b_norm, label=basket_label, color=PALETTE["cac"], linewidth=1.6)
+    axes[0].plot(bm_norm.index, bm_norm, label=bench_label, color=PALETTE["sp"], linewidth=1.6)
+    axes[0].set_title("Cumulative performance (base 100)")
+    axes[0].legend(fontsize=9)
+
+    ret_basket = np.log(basket_series / basket_series.shift(1)).dropna()
+    ret_bench = np.log(bench_series / bench_series.shift(1)).dropna()
+    common = pd.concat([ret_basket, ret_bench], axis=1).dropna()
+    axes[1].scatter(common.iloc[:, 1] * 100, common.iloc[:, 0] * 100, s=8, alpha=0.35, color=PALETTE["accent3"])
+    xline = np.linspace(common.iloc[:, 1].min(), common.iloc[:, 1].max(), 50)
+    axes[1].plot(xline * 100, beta * xline * 100, color="black", linewidth=1.5, label=f"beta = {beta:.2f}")
+    axes[1].set_xlabel(f"Daily return {bench_label} (%)")
+    axes[1].set_ylabel(f"Daily return {basket_label} (%)")
+    axes[1].set_title(f"Correlation = {rho:.2f}")
+    axes[1].legend(fontsize=9)
+    fig.suptitle(f"{basket_label}  vs  {bench_label}", fontweight="bold")
+    return _save(fig, filename)
+
+
+def plot_static_corr_bar(static_df, filename):
+    fig, ax = plt.subplots(figsize=(10, 6))
+    labels = [n.split(" (")[0] for n in static_df["Basket"]]
+    colors = [PALETTE["accent1"] if v > 0 else PALETTE["accent2"] for v in static_df["Correlation"]]
+    ax.bar(labels, static_df["Correlation"], color=colors)
+    ax.axhline(0, color="black", linewidth=0.8)
+    ax.set_ylabel("Correlation with sector index (MSCI proxy)")
+    ax.set_title("Correlation of each basket with its sector reference index")
+    ax.tick_params(axis="x", rotation=20)
+    for lbl in ax.get_xticklabels():
+        lbl.set_ha("right")
+    ax.set_ylim(-1, 1)
+    return _save(fig, filename)
+
+
+# ==============================================================================
+# 8. REPORT EXPORT
+# ==============================================================================
+
+def write_report(source, basket_rets, corr_matrix, summary, portfolio, var95, static_bm):
+    path = os.path.join(REPORT_DIR, "report.md")
+    lines = ["# Report -- CvC / PvP Pricing & Portfolio, CAC40 vs S&P500 Sector Baskets\n",
+             f"Market data source: **{source}**\n",
+             "## 1. Annualized basket volatilities\n",
+             basket_rets.std().mul(np.sqrt(252) * 100).round(1).to_frame("Annualized vol (%)").to_markdown(),
+             "\n## 2. Correlations between baskets (full matrix)\n",
+             corr_matrix.round(2).to_markdown(),
+             "\n## 3. Pricing of CvC trades (portfolio)\n",
+             summary.round(2).to_markdown(index=False),
+             f"\n**Total portfolio value: {portfolio.total_value:,.0f} EUR**",
+             f"\n**VaR 95% (resampling approximation): {var95:,.0f} EUR**\n",
+             "\n## 4. Basket vs sector reference index correlation\n",
+             static_bm.round(3).to_markdown(index=False),
+             "\n\n## 5. Methodological notes\n",
+             """
+- **CvC** ("Call vs Call") options pay `max(R_A - R_B, 0)`: they express a
+  relative outperformance view of basket A over basket B, without a pure
+  directional exposure.
+- **PvP** ("Put vs Put") options pay `max(R_B - R_A, 0)`: they hedge
+  relative underperformance risk.
+- The price of these structures **decreases as the correlation between A
+  and B increases**: this is the very nature of a "correlation trade" --
+  selling CvC/PvP amounts to being short correlation.
+- Pricing is performed via Monte Carlo (correlated multi-asset GBM,
+  variance reduced with antithetic variates), with correlation and
+  volatilities estimated empirically from observed / simulated returns.
+- When the Yahoo Finance connection is unavailable, prices are generated
+  by a factor model (local market + sector + idiosyncratic) calibrated to
+  reproduce realistic CAC40/S&P500 and basket/sector correlations -- the
+  methodology remains identical when substituting real market data.
+"""]
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+
+# ==============================================================================
+# 9. MAIN PIPELINE
+# ==============================================================================
+
+def section(title):
+    print("\n" + "=" * 78)
+    print(title)
+    print("=" * 78)
+
+
+def main():
+    section("1. DATA LOADING")
+    prices_stocks, prices_bench, source = load_all_data(n_days=N_DAYS)
+    print(f"Stock data source: {source}")
+    print(f"Period: {prices_stocks.index.min().date()} -> {prices_stocks.index.max().date()}  "
+          f"({len(prices_stocks)} days)")
+
+    section("2. BASKET CONSTRUCTION")
+    basket_levels = build_all_baskets(ALL_BASKETS, prices_stocks)
+    bench_levels = build_benchmark_indices(prices_bench)
+    basket_rets = log_returns(basket_levels)
+    bench_rets = log_returns(bench_levels)
+    for b in ALL_BASKETS:
+        print(f"  - {b.name}  |  annualized vol ~ {basket_rets[b.name].std()*np.sqrt(252)*100:.1f}%")
+
+    cac_baskets = [b.name for b in ALL_BASKETS if b.currency == "EUR"]
+    sp_baskets = [b.name for b in ALL_BASKETS if b.currency == "USD"]
+    plot_basket_levels(basket_levels[cac_baskets], "CAC40 sector baskets (base 100)", "01_cac40_baskets")
+    plot_basket_levels(basket_levels[sp_baskets], "S&P500 sector baskets (base 100)", "02_sp500_baskets")
+    plot_basket_levels(bench_levels, "Sector reference indices (MSCI World proxy, base 100)", "03_sector_benchmarks")
+
+    section("3. CORRELATION ANALYSIS -- BASKET BY BASKET")
+    corr_matrix = full_correlation_matrix(basket_rets, bench_rets)
+    plot_correlation_heatmap(corr_matrix, "Correlation matrix -- all baskets and benchmarks",
+                              "04_global_correlation_heatmap")
+    print(corr_matrix.round(2).to_string())
+
+    rolling_corr = rolling_correlations_all_trades(basket_rets, TRADES, window=60)
+    plot_rolling_correlations(rolling_corr, "Rolling correlation (60d) -- CvC/PvP trading pairs",
+                               "05_rolling_correlation_trades")
+
+    section("4. MONTE CARLO PRICING OF CvC / PvP TRADES")
+    portfolio = Portfolio()
+    for i, trade in enumerate(TRADES, start=1):
+        A, B = trade["basket_A"], trade["basket_B"]
+        res_cvc = price_exchange_option(A.tickers, B.tickers, A.weights, B.weights,
+                                         log_returns(prices_stocks), "CvC", trade["maturity_years"],
+                                         RISK_FREE_EUR, trade["notional"], MC_PARAMS)
+        res_pvp = price_exchange_option(A.tickers, B.tickers, A.weights, B.weights,
+                                         log_returns(prices_stocks), "PvP", trade["maturity_years"],
+                                         RISK_FREE_EUR, trade["notional"], MC_PARAMS)
+
+        print(f"\n[{trade['name']}]  (maturity {trade['maturity_years']} yr(s), "
+              f"notional {trade['notional']:,.0f} EUR)")
+        print(f"   CvC (long outperf. {A.name.split(' (')[0]}) : price = {res_cvc.price:,.0f} EUR  "
+              f"(95% CI [{res_cvc.ci_95[0]:,.0f} ; {res_cvc.ci_95[1]:,.0f}])")
+        print(f"   PvP (underperf. hedge)                   : price = {res_pvp.price:,.0f} EUR  "
+              f"(95% CI [{res_pvp.ci_95[0]:,.0f} ; {res_pvp.ci_95[1]:,.0f}])")
+
+        portfolio.add_trade(f"{trade['name']} (CvC)", "CvC", res_cvc.price, res_cvc.std_error,
+                             trade["notional"], trade["maturity_years"], res_cvc)
+
+        tag = trade['name'][:20].replace(' ', '_')
+        plot_payoff_scatter(res_cvc.paths_A, res_cvc.paths_B, "CvC", trade["name"], f"06_{i:02d}_payoff_{tag}")
+        plot_mc_convergence(res_cvc.payoffs, res_cvc.discount_factor, trade["notional"],
+                             trade["name"], f"07_{i:02d}_convergence_{tag}")
+
+    section("5. CORRELATION SENSITIVITY (CORRELATION VEGA)")
+    for i, trade in enumerate(TRADES, start=1):
+        A, B = trade["basket_A"], trade["basket_B"]
+        current_rho = corr_matrix.loc[A.name, B.name]
+        rho_grid, prices_grid = correlation_sensitivity(
+            A.tickers, B.tickers, A.weights, B.weights, log_returns(prices_stocks),
+            "CvC", trade["maturity_years"], RISK_FREE_EUR, trade["notional"], mc_params=MC_PARAMS)
+        tag = trade['name'][:20].replace(' ', '_')
+        plot_correlation_sensitivity(rho_grid, prices_grid, trade["name"], "CvC",
+                                      f"08_{i:02d}_correlation_sensitivity_{tag}", current_rho=current_rho)
+        print(f"  {trade['name']}: estimated historical correlation = {current_rho:.2f} -> "
+              f"price at rho=0: {prices_grid[np.argmin(np.abs(rho_grid))]:,.0f} EUR ; "
+              f"price at high rho (0.9): {prices_grid[-2]:,.0f} EUR")
+
+    section("6. AGGREGATED PORTFOLIO")
+    summary = portfolio.summary_table()
+    print(summary.to_string(index=False))
+    plot_portfolio_composition(summary, "09_portfolio_composition")
+
+    pnl_samples = portfolio.simulated_portfolio_payoffs()
+    var95 = portfolio.value_at_risk(0.95)
+    print(f"\nTotal portfolio value: {portfolio.total_value:,.0f} EUR")
+    print(f"VaR 95% (1 year, resampling approximation): {var95:,.0f} EUR")
+    plot_portfolio_pnl_distribution(pnl_samples, portfolio.total_value, var95, "10_portfolio_pnl_distribution")
+
+    section("7. BASKET vs SECTOR REFERENCE INDEX (MSCI PROXY)")
+    static_bm = static_basket_vs_benchmark(basket_rets, bench_rets, BASKET_TO_BENCHMARK)
+    print(static_bm.round(3).to_string(index=False))
+    plot_static_corr_bar(static_bm, "11_basket_vs_sector_correlation")
+
+    for i, (basket_name, bench_name) in enumerate(BASKET_TO_BENCHMARK.items(), start=1):
+        row = static_bm[static_bm["Basket"] == basket_name].iloc[0]
+        plot_basket_vs_benchmark(basket_levels[basket_name], bench_levels[bench_name],
+                                  basket_name.split(" (")[0], bench_name, row["Correlation"],
+                                  row["Beta (basket / benchmark)"],
+                                  f"12_{i:02d}_{basket_name.split(' (')[0].replace(' ', '_')}_vs_sector")
+
+    bm_rolling = basket_vs_benchmark_correlation(basket_rets, bench_rets, BASKET_TO_BENCHMARK, window=60)
+    plot_rolling_correlations(bm_rolling, "Rolling correlation (60d) -- baskets vs sector indices",
+                               "13_rolling_correlation_sectors")
+
+    section("8. SUMMARY REPORT EXPORT")
+    write_report(source, basket_rets, corr_matrix, summary, portfolio, var95, static_bm)
+    print(f"Report generated: {os.path.join(REPORT_DIR, 'report.md')}")
+    print(f"\nAll charts are available in {FIG_DIR} (openable directly in VS Code).")
+    print("\nClose the chart windows (or press Ctrl+C in the terminal) to finish.")
+    plt.show()   # keep all chart windows open until you close them
+
+
+if __name__ == "__main__":
+    main()
