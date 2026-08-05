@@ -45,6 +45,42 @@ Market data (5 years of daily prices) is sourced from Yahoo Finance where availa
 
 The gap is immediately informative: **S&P Tech is the most volatile basket of the six by a clear margin (~35%)**, almost entirely driven by Nvidia's idiosyncratic volatility — a reminder that even a "sector-matched" pair can carry very different risk profiles on each side of the Atlantic before any correlation effect is even considered.
 
+**Markets forcasts**
+
+**CAC 40 STOCKS**
+
+***Tech***
+***Capgemini***
+<img width="957" height="283" alt="image" src="https://github.com/user-attachments/assets/07ed3a84-83fe-4ce1-bbd1-0739f3272a33" />
+
+***Dassault Systemes***
+<img width="958" height="272" alt="image" src="https://github.com/user-attachments/assets/8d2e7171-84d2-44f7-848b-74dc7849e5fa" />
+
+***STMicroelectronics***
+<img width="946" height="272" alt="image" src="https://github.com/user-attachments/assets/8648bff1-ee6f-4e5c-b915-b09a9343ae21" />
+
+***Energy***
+***Total Energies***
+<img width="958" height="287" alt="image" src="https://github.com/user-attachments/assets/e9467f04-225d-43e9-855d-0443490e9ba6" />
+
+***Engie***
+<img width="948" height="271" alt="image" src="https://github.com/user-attachments/assets/d0fdb4a1-c7d9-4ecd-953d-3144bc43af67" />
+
+***Luxury***
+***LVMH***
+<img width="952" height="273" alt="image" src="https://github.com/user-attachments/assets/427fe35b-5f91-4701-895f-f982b41caa2b" />
+
+***Hermes***
+<img width="949" height="268" alt="image" src="https://github.com/user-attachments/assets/f6ff4777-9e78-44ae-9b63-f13869e32f66" />
+
+***Kering***
+<img width="947" height="261" alt="image" src="https://github.com/user-attachments/assets/e2940670-16f4-40f8-9919-55287a262aba" />
+
+***L'Oréal***
+<img width="950" height="265" alt="image" src="https://github.com/user-attachments/assets/bd953206-b28c-4a94-944c-ea869c5593fc" />
+
+
+
 <img width="1917" height="1016" alt="01_cac40_baskets" src="https://github.com/user-attachments/assets/2e7fd2a2-c722-4c6e-98e9-ef093f6bd03a" />
 
 *Figure 1 — Cumulative performance (base 100) of the three CAC40 sector baskets over the 5-year window.*
