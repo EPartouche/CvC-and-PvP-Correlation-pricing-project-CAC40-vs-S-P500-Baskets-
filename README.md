@@ -341,12 +341,3 @@ The **Luxury/Media pair breaks this pattern**: CAC Luxury actually posts the *hi
 5. **Correlation is a regime, not a constant** — every rolling-correlation chart in this project (Figures 5 and 13) shows meaningful drift over the 5-year window, which is the real risk-management challenge behind the elegant static formulas.
 
 This project closes the loop I opened on the Sunrise Brokers desk: I can now explain, from first principles and with my own simulation engine, exactly why a CvC or PvP quote moves the way it does — and, more usefully, exactly what a desk running a book of them needs to watch.
-
-## How to Reproduce
-
-```bash
-pip install numpy pandas matplotlib seaborn scipy yfinance tabulate
-python cvc_pvp_project.py
-```
-
-All 24 charts are regenerated in `output/figures/` and a full numerical report in `output/reports/report.md`.
