@@ -51,16 +51,20 @@ The gap is immediately informative: **S&P Tech is the most volatile basket of th
 
 ***Tech***
 ***Capgemini***
+
 <img width="957" height="283" alt="image" src="https://github.com/user-attachments/assets/07ed3a84-83fe-4ce1-bbd1-0739f3272a33" />
 
 ***Dassault Systemes***
+
 <img width="958" height="272" alt="image" src="https://github.com/user-attachments/assets/8d2e7171-84d2-44f7-848b-74dc7849e5fa" />
 
 ***STMicroelectronics***
+
 <img width="946" height="272" alt="image" src="https://github.com/user-attachments/assets/8648bff1-ee6f-4e5c-b915-b09a9343ae21" />
 
 ***Energy***
 ***Total Energies***
+
 <img width="958" height="287" alt="image" src="https://github.com/user-attachments/assets/e9467f04-225d-43e9-855d-0443490e9ba6" />
 
 ***Engie***
